@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" type="text/css" href="../Static/revv.css">
+</head>
+<body>
+
+<div class="grid-container">
+
+  <div class="item1"><h1>Revv</h1><h6>Power Reader</h6></div>
+
+  <div class="item2">
+    <ul>
+      <li><form method="post" enctype="multipart/form-data" action="">
+        <p><b>Click the 'Browse...' button to choose file.</b></p>
+        <input type="hidden" name="form_name" value="file_upload">
+        <label for="file">File</label>
+        <input id="file" name="file" type="file" />
+        <input type="submit" name="submit" value="Upload"/>
+        </form></li>
+      <li><form method="post" action="">
+        <p><b>Below is a list of available models to choose from.</b></p>
+        
+        {% if list_models != [] %}
+
+        <input type="hidden" name="form_name" value="model_select">
+        <ul>
+        {% for item in list_models %}
+            <input type="radio" id={{ item }} name="select_model" value={{ item }} {% if (rb_option ==  item  ) %} checked {% endif %} >
+            <label for={{ item }}>{{ item }}</label><br>
+        {% endfor %}
+        </ul>   
+        <input type="submit" name="submit" value="Select">
+        </form>
+        {% else %}
+          <p>Your model list is empty.</p>
+        {% endif %}
+        </li>
+      
+      <li><form method="post" action="">
+        {% if list_entities != [] %}
+        <p><b>Here are entities supported by your model.  Select one or more:</b></p>
+        <input type="hidden" name="form_name" value="entity_select">
+        <ul>
+          {% for ent_item in list_entities %}
+              <input type="checkbox" id={{ ent_item }} name="entity" value={{ ent_item }} {% if ent_item in cb_options %} checked {% endif %} >
+              <label for={{ ent_item }}>{{ ent_item }}</label><br>
+          {% endfor %}
+          {% else %}
+            <p style="color:red; font-weight: bold;">You haven't selected a model yet.  Please select a model.</p>
+          {% endif %}
+        </ul>
+        <input type="submit" name="submit" value="Refresh">
+        </form></li>
+      
+    </ul>
+</div>
+
+  <div class="item3">
+    {{ file_lines|safe }}
+  </div>  
+
+  <div class="item4"><b>&copy;progmatix21.github.io</b></div>
+  
+</div>
+
+</body>
+</html>
+
+
