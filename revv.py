@@ -1,15 +1,16 @@
 import importlib
 import spacy
 import io, os
-from flask import Flask, render_template, request, Response, flash, url_for, redirect
+from flask import Flask, render_template, request, session, Response, flash, url_for, redirect,make_response
 from spacy import displacy
 
+
 # Get the list of spacy models available
-list_models = list(spacy.info()['pipelines'].keys())[::-1]
+LIST_MODELS = list(spacy.info()['pipelines'].keys())[::-1]
 
 # Import the models available
 try:
-    importlib.import_module(*list_models)
+    importlib.import_module(*LIST_MODELS)
 except:
     print("Some models are not available.  Check if they are installed.")
 
@@ -20,8 +21,10 @@ UPLOAD_FOLDER = "Static/Uploads/"
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16*1024*1024
 
-# Globals (the Model in MVC)
-helplines = """
+app.secret_key = 'REVV_SECRET_KEY'
+
+# Session variables (the Model in MVC)
+HELPLINES = """
 <h2>Welcome to the Revv Power Reader</h2>
 <p>Revv powers your reading by highlighting named entities of your choice.  
 This helps you focus on relevant parts and skim over the rest.</p>
@@ -34,81 +37,78 @@ To get started:
 <p>Your text is now ready for power reading!</p>
 """
 
-lines = helplines
+import random
+import string
 
-nlp = None
+# sessions dictionary where keys are session ids and values are session data
 
+sessions_dict = {}
 
-if list_models != []:
-    rb_option = list_models[0]
-else:
-    rb_option = None
-
-
-list_entities = []
-
-if list_entities != []:
-    cb_options = list_entities[0]
-else:
-    cb_options = None
-
-def delete_folder_contents(folder_to_delete):
-    '''Function to clear the Uploads folder.'''
-    with os.scandir(folder_to_delete) as entries:
-        for entry in entries:
-            if entry.is_dir():
-                shutil.rmtree(entry.path)
-            else:
-                os.remove(entry.path)
-
+newkey = lambda n: ''.join(random.choices(string.digits+string.ascii_lowercase+string.ascii_uppercase, k=n))
 
 @app.route("/",methods=["GET","POST"])
 def show_mainpage():
     '''The Controller for MVC.'''
-    global lines
-    global rb_option
-    global cb_options
-    global list_entities
-    global nlp
-    lines_rendered = "<p>"+lines+"</p>"
+    
+    global sessions_dict
+    """session management: All 'session' variables including session key are stored as cookies.
+    Only the doc object and the file lines are stored as part of the global sessions dict."""
+
+    newkey = lambda n: ''.join(random.choices(string.digits+string.ascii_lowercase+string.ascii_uppercase, k=n))
+    # Initialize all session variables (the model) in the GET request
+    # also get a new session key
+    if request.method == "GET":
+        session.permanent = True
+        session['key'] = newkey(5)  # Get a session key
+        sessions_dict[session['key']] = \
+            {'doc':None, 'lines':None, 'u_file':None, 'lines_rendered':None} # init a session object
+
+        sessions_dict[session['key']]['lines'] = HELPLINES
+        session['rb_option'] = None
+
+        session['list_entities'] = []
+        session['cb_options'] = None
+        session['doc'] = None
+
+    sessions_dict[session['key']]['lines_rendered'] = "<p>"+sessions_dict[session['key']]['lines']+"</p>"
 
     if request.method == "POST":
         if request.form.get("submit") == "Upload":
-            u_file = request.files['file']                #reads hidden form field
-            if u_file.filename:
-                delete_folder_contents(UPLOAD_FOLDER)
-                fqfn = os.path.join(UPLOAD_FOLDER+u_file.filename)
-                u_file.save(fqfn)
-                with open(fqfn,'r') as f:
-                    lines = f.read()
-                lines_rendered = "<p>"+lines+"</p>"
+            sessions_dict[session['key']]['u_file'] = request.files['file']                #reads hidden form field
+            if sessions_dict[session['key']]['u_file']:
+                session['fqfn'] = os.path.join(UPLOAD_FOLDER+sessions_dict[session['key']]['u_file'].filename)
+                sessions_dict[session['key']]['u_file'].save(session['fqfn'])
+                with open(session['fqfn'],'r') as f:
+                    sessions_dict[session['key']]['lines'] = f.read()
+                os.unlink(session['fqfn'])  # Cleanup the Upload folder of your uploaded file
+
+                sessions_dict[session['key']]['lines_rendered'] = "<p>"+sessions_dict[session['key']]['lines']+"</p>"
 
         elif request.form.get("submit") == "Select":
             
-            rb_option = request.form['select_model']  
+            session['rb_option'] = request.form['select_model']  
 
-            if rb_option in list_models:
-                nlp = spacy.load(rb_option)
-                print(f"{rb_option} is selected.")
+            if session['rb_option'] in LIST_MODELS:
+                nlp = spacy.load(session['rb_option'])
                 ner = nlp.get_pipe("ner")
-                list_entities = list(ner.labels)
+                session['list_entities'] = list(ner.labels)
+                # Create doc object and store it as a session variable
+                sessions_dict[session['key']]['doc'] = nlp(sessions_dict[session['key']]['lines'])
                 
-            print(list_entities)
-            cb_options = request.form.getlist('entity')
+            session['cb_options'] = request.form.getlist('entity')
+            
 
         elif request.form.get("submit") == "Refresh":
             
-            cb_options = request.form.getlist('entity')
-
-            if nlp != None:
-                doc = nlp(lines)
-                lines_rendered = displacy.render(doc, style="ent",options={"ents":cb_options})
+            session['cb_options'] = request.form.getlist('entity')
+            if sessions_dict[session['key']]['doc'] != None:  # Ensure you have a model selected
+                sessions_dict[session['key']]['lines_rendered'] = displacy.render(sessions_dict[session['key']]['doc'], style="ent",options={"ents":session['cb_options']})
             else:
                 print("You haven't selected a model.  Select a model and then click Refresh.")
-
+    
     # The View
-    return render_template('revv.html', file_lines=lines_rendered, rb_option=rb_option, list_models=list_models, cb_options=cb_options, list_entities=list_entities)  #, html_lines=html_lines)
+    return render_template('revv.html', file_lines=sessions_dict[session['key']]['lines_rendered'], rb_option=session['rb_option'], list_models=LIST_MODELS, cb_options=session['cb_options'], list_entities=session['list_entities'])  
 
 if __name__ == "__main__":
-    app.run(debug = True)  #(host="0.0.0.0",port=8080)
+    app.run()  #(host="0.0.0.0",port=8080)
     exit()
